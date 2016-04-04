@@ -7,22 +7,21 @@ package starling.display.graphics
 	import flash.geom.Point;
 	import flash.geom.Rectangle;
 	import flash.utils.Dictionary;
-	import starling.display.geom.GraphicsPolygon;
-	import starling.display.graphics.util.IGraphicDrawHelper;
+	import starling.display.Mesh;
+	import starling.rendering.MeshStyle;
+	import starling.rendering.VertexData
+	import starling.rendering.IndexData;
+	//import starling.display.geom.GraphicsPolygon;
+	//import starling.display.graphics.util.IGraphicDrawHelper;
 	import starling.geom.Polygon;
 	
-	import starling.core.RenderSupport;
 	import starling.core.Starling;
 	import starling.display.BlendMode;
 	import starling.display.DisplayObject;
-	import starling.display.materials.IMaterial;
-	import starling.display.materials.StandardMaterial;
-	import starling.display.shaders.fragment.VertexColorFragmentShader;
-	import starling.display.shaders.vertex.StandardVertexShader;
 	import starling.errors.AbstractMethodError;
 	import starling.errors.MissingContextError;
 	import starling.events.Event;
-	import starling.utils.getNextPowerOfTwo;
+	import starling.utils.MathUtil;
 	import starling.textures.Texture;
 	import starling.textures.SubTexture;
 	
@@ -31,16 +30,11 @@ package starling.display.graphics
 	 * Abstract, do not instantiate directly
 	 * Used as a base-class for all the drawing API sub-display objects (Like Fill and Stroke).
 	 */
-	public class Graphic extends DisplayObject
+	public class Graphic extends Mesh
 	{
 		protected static const VERTEX_STRIDE		:int = 9;
 		protected static var sHelperMatrix			:Matrix = new Matrix();
-		protected static var defaultVertexShaderDictionary		:Dictionary = new Dictionary(true);
-		protected static var defaultFragmentShaderDictionary	:Dictionary = new Dictionary(true);
 		
-		protected var _material		:IMaterial;
-		protected var vertexBuffer	:VertexBuffer3D;
-		protected var indexBuffer		:IndexBuffer3D;
 		protected var vertices		:Vector.<Number>;
 		protected var indices		:Vector.<uint>;
 		protected var _uvMatrix		:Matrix;
@@ -70,101 +64,30 @@ package starling.display.graphics
 		protected var _precisionHitTestDistance:Number = 0; // This is added to the thickness of the line when doing precisionHitTest to make it easier to hit 1px lines etc
 		
 		// Attempt to allow partial rendering of graphics. Mostly useful for Strokes, I would guess.
-		protected var _graphicDrawHelper:IGraphicDrawHelper = null;
+		//protected var _graphicDrawHelper:IGraphicDrawHelper = null;
 					
-		public function Graphic()
+		public function Graphic(style:MeshStyle = null)
 		{
 			indices = new Vector.<uint>();
 			vertices = new Vector.<Number>();
 			
-			var currentStarling:Starling = Starling.current;
-			
-			var vertexShader:StandardVertexShader = defaultVertexShaderDictionary[currentStarling];
-			if ( vertexShader == null )
-			{
-				vertexShader = new StandardVertexShader();
-				defaultVertexShaderDictionary[currentStarling] = vertexShader;
-			}
-			
-			var fragmentShader:VertexColorFragmentShader = defaultFragmentShaderDictionary[currentStarling];
-			if ( fragmentShader == null )
-			{
-				fragmentShader = new VertexColorFragmentShader();
-				defaultFragmentShaderDictionary[currentStarling] = fragmentShader;
-			}
-			
-			_material = new StandardMaterial( vertexShader, fragmentShader );
-			
 			minBounds = new Point();
 			maxBounds = new Point();
-
-			if (Starling.current)
-			{
-				Starling.current.addEventListener(Event.CONTEXT3D_CREATE, onContextCreated);
-			}
+			
+			super(new VertexData(MeshStyle.VERTEX_FORMAT, 3),  new IndexData(3), style);
 		}
 		
-		private function onContextCreated( event:Event ):void
-		{
-			geometryInvalid = true;
-			
-			buffersInvalid = true;
-			uvsInvalid = true;
-			_material.restoreOnLostContext();
-			
-			onGraphicLostContext();
-		}
 		
-		protected function onGraphicLostContext() : void
-		{
-			
-		}
 		
 		override public function dispose():void
 		{
-			if (Starling.current)
-			{
-				Starling.current.removeEventListener(Event.CONTEXT3D_CREATE, onContextCreated);
-				super.dispose();
-			}
 
-			if ( vertexBuffer )
-			{
-				vertexBuffer.dispose();
-				vertexBuffer = null;
-			}
-			
-			if ( indexBuffer )
-			{
-				indexBuffer.dispose();
-				indexBuffer = null;
-			}
-			
-			if ( material )
-			{
-				//material.dispose(); Material should NOT be disposed here. It can be used elsewhere - Graphic is NOT owner of Material.
-				material.releaseProgramRef(); // However, the material needs to release a reference count in the program cache, through this new method.
-				material = null;
-			}
-			
 			vertices = null;
 			indices = null;
 			_uvMatrix = null;
 			minBounds = null;
-			maxBounds = null;
-			
+			maxBounds = null;			
 			geometryInvalid = true;
-		}
-		
-		public function set material( value:IMaterial ):void
-		{
-			_material = value;
-			
-		}
-		
-		public function get material():IMaterial
-		{
-			return _material;
 		}
 		
 		public function get uvMatrix():Matrix
@@ -211,7 +134,7 @@ package starling.display.graphics
 		/** Returns the object that is found topmost beneath a point in local coordinates, or nil if 
          *  the test fails. If "forTouch" is true, untouchable and invisible objects will cause
          *  the test to fail. */
-        override public function hitTest(localPoint:Point, forTouch:Boolean=false):DisplayObject
+        /*override public function hitTest(localPoint:Point, forTouch:Boolean=false):DisplayObject
         {
             // on a touch test, invisible or untouchable objects cause the test to fail
             if (forTouch && (visible == false || touchable == false )) return null;
@@ -231,7 +154,7 @@ package starling.display.graphics
 				
 			return null;
 			
-        }
+        }*/
 		
 		override public function getBounds(targetSpace:DisplayObject, resultRect:Rectangle=null):Rectangle
 		{
@@ -301,7 +224,7 @@ package starling.display.graphics
 			throw( new AbstractMethodError() );
 		}
 		
-		protected function applyUVMatrix():void
+		public function applyUVMatrix():void
 		{
 			if ( !vertices ) return;
 			if ( !_uvMatrix ) return;
@@ -312,16 +235,17 @@ package starling.display.graphics
 				uv.x = vertices[i+7];
 				uv.y = vertices[i+8];
 				uv = _uvMatrix.transformPoint(uv);
-				vertices[i+7] = uv.x;
-				vertices[i+8] = uv.y;
+				vertexData.setPoint(int(i / VERTEX_STRIDE), "texCoords", uv.x, uv.y);
+				/*vertices[i+7] = uv.x;
+				vertices[i+8] = uv.y;*/
 			}
 		}
 		
 		public function adjustUVMappings(x:Number, y:Number, texture:Texture) : void
 		{
 			
-			var w:Number = getNextPowerOfTwo(texture.nativeWidth);
-			var h:Number = getNextPowerOfTwo(texture.nativeHeight);
+			var w:Number = MathUtil.getNextPowerOfTwo(texture.nativeWidth);
+			var h:Number = MathUtil.getNextPowerOfTwo(texture.nativeHeight);
 			
 			var invW:Number = 1.0 / w;
 			var invH:Number = 1.0 / h;
@@ -357,11 +281,11 @@ package starling.display.graphics
 			if ( geometryInvalid == false && uvMappingsChanged == false )
 				return;
 			
-			if ( vertexBuffer && (buffersInvalid || uvsInvalid || isGeometryScaled ) )
+			/*if ( vertexBuffer && (buffersInvalid || uvsInvalid || isGeometryScaled ) )
 			{
 				vertexBuffer.dispose();
 				indexBuffer.dispose();
-			}
+			}*/
 			
 			if ( buffersInvalid || geometryInvalid )
 			{
@@ -381,60 +305,8 @@ package starling.display.graphics
 			geometryInvalid = true;
 		}
 		
-		override public function render( renderSupport:RenderSupport, parentAlpha:Number ):void
-		{
-			validateNow();
-			
-			if ( indices == null || indices.length < 3 ) return; 
-			
-			if ( buffersInvalid || uvsInvalid || isGeometryScaled )
-			{
-				// Upload vertex/index buffers.
-				var numVertices:int = vertices.length / VERTEX_STRIDE;
-				vertexBuffer = Starling.context.createVertexBuffer( numVertices, VERTEX_STRIDE );
-				vertexBuffer.uploadFromVector( vertices, 0, numVertices )
-				indexBuffer = Starling.context.createIndexBuffer( indices.length );
-				indexBuffer.uploadFromVector( indices, 0, indices.length );
-				buffersInvalid = uvsInvalid = isGeometryScaled = geometryInvalid = false;
-			}
-			else if ( geometryInvalid || uvMappingsChanged )
-			{
-				vertexBuffer.uploadFromVector( vertices, 0, vertices.length / VERTEX_STRIDE )
-				indexBuffer.uploadFromVector( indices, 0, indices.length );
-				geometryInvalid = false;
-				uvMappingsChanged = false;
-			}
-			
-			var context:Context3D = Starling.context;
-			if (context == null) throw new MissingContextError();
-			
-			// always call this method when you write custom rendering code!
-			// it causes all previously batched quads/images to render.
-			renderSupport.finishQuadBatch();
-			
-			if ( _graphicDrawHelper )
-			{
-				_graphicDrawHelper.onDrawTriangles(_material, renderSupport, vertexBuffer, indexBuffer, parentAlpha * this.alpha);
-			}
-			else
-			{
-				RenderSupport.setBlendFactors(_material.premultipliedAlpha, this.blendMode == BlendMode.AUTO ? renderSupport.blendMode : this.blendMode);
-				_material.drawTriangles( Starling.context, renderSupport.mvpMatrix3D, vertexBuffer, indexBuffer, parentAlpha * this.alpha);
-				renderSupport.raiseDrawCount();
-			}
-
-			
-			
-			
-			context.setTextureAt(0, null);
-			context.setTextureAt(1, null);
-			context.setVertexBufferAt(0, null);
-			context.setVertexBufferAt(1, null);
-			context.setVertexBufferAt(2, null);
-			
-		}
 		
-		
+		/*
 		public function exportToPolygon(prevPolygon:GraphicsPolygon = null) : GraphicsPolygon
 		{
 			validateNow();
@@ -468,10 +340,10 @@ package starling.display.graphics
 				return prevPolygon;
 			}
 			
-		}
+		}*/
 		
 
-		public function set graphicDrawHelper(gdh:IGraphicDrawHelper) : void
+		/*public function set graphicDrawHelper(gdh:IGraphicDrawHelper) : void
 		{
 			validateNow();
 			_graphicDrawHelper = gdh;
@@ -481,7 +353,7 @@ package starling.display.graphics
 		public function get graphicDrawHelper() : IGraphicDrawHelper
 		{
 			return _graphicDrawHelper;
-		}
+		}*/
 		
 	}
 }

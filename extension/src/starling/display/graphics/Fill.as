@@ -2,6 +2,11 @@ package starling.display.graphics
 {
 	import flash.geom.Matrix;
 	import flash.geom.Point;
+	import starling.display.Mesh;
+	import starling.display.Quad;
+	import starling.rendering.MeshStyle;
+	import starling.rendering.VertexData;
+	import starling.rendering.IndexData;
 	
 	import starling.display.graphics.util.TriangleUtil;
 	
@@ -13,21 +18,17 @@ package starling.display.graphics
 		protected var _numVertices	:int;
 		protected var _isConvex:Boolean = true; 
 		
-		public function Fill()
+		public function Fill(style:MeshStyle = null)
 		{
-			clear();
+			super(style);
 			
 			_uvMatrix = new Matrix();
-			_uvMatrix.scale(1/256, 1/256);
-		}
-		
-		public function get numVertices():int
-		{
-			return _numVertices;
+			//_uvMatrix.scale(1 / 256, 1 / 256);
 		}
 
 		public function clear():void
 		{
+			clearBuffers();
 			indices = new Vector.<uint>();
 			vertices = new Vector.<Number>();
 			if(minBounds)
@@ -41,6 +42,9 @@ package starling.display.graphics
 			fillVertices = null;
 			setGeometryInvalid();
 			_isConvex = true;
+			
+			minBounds = new Point();
+			maxBounds = new Point();
 		}
 		
 		override public function dispose():void
@@ -124,20 +128,36 @@ package starling.display.graphics
 			setGeometryInvalid();
 		}
 		
-		override protected function buildGeometry():void
+		public function buildGeometry():void
 		{
 			if ( _numVertices < 3) return;
 			
 			vertices = new Vector.<Number>();
 			indices = new Vector.<uint>();
+			clearBuffers();
 		
 			triangulate(fillVertices, _numVertices, vertices, indices, _isConvex);
-				
+			
+			vertexData.clear();
+			vertexData.rawData.length = MeshStyle.VERTEX_FORMAT.vertexSize * vertices.length;
+			indexData.clear();
+			
+			//[ x, y, 0, r, g, b, alpha, x, y ]
+			var formatSize:int = 9;
+			
+			for (var  i:int = 0 ; i < vertices.length;i+=formatSize ){
+				vertexData.setPoint(int(i / formatSize), "position", vertices[i ], vertices[i + 1]);
+				vertexData.setPoint(int(i / formatSize), "texCoords", vertices[i + 7], vertices[i + 8]);
+			}
+			formatSize = 3;
+			for (i = 0 ; i < indices.length; i += formatSize ) {
+				indexData.addTriangle(indices[i], indices[i + 1], indices[i + 2]);
+			}			
 		}
 		
 		override public function shapeHitTest( stageX:Number, stageY:Number ):Boolean
 		{
-			if ( vertices == null ) return false;
+			if ( vertexData == null ) return false;
 			if ( numVertices < 3 ) return false;
 			
 			var pt:Point = globalToLocal(new Point(stageX,stageY));
@@ -493,6 +513,21 @@ package starling.display.graphics
 				vertexA[6] + t * (vertexB[6] - vertexA[6]),
 				vertexA[7] + t * (vertexB[7] - vertexA[7]),
 				vertexA[8] + t * (vertexB[8] - vertexA[8]) ] );
+		}
+		
+		
+		override protected function setGeometryInvalid(invalidateBuffers:Boolean = true) : void
+		{
+			if ( invalidateBuffers )
+				buffersInvalid = true;
+			geometryInvalid = true;
+		}
+		
+		public function clearBuffers():void {
+		if(vertexData)	
+			vertexData.clear();
+		if(indexData)
+            indexData.clear();
 		}
 	}
 }
