@@ -1,3 +1,34 @@
+My porting to Starling 2.0 architecture (original extension https://github.com/StarlingGraphics/Starling-Extension-Graphics)
+
+currently Fill and graphic class ported. 
+
+example:
+
+			var fill:Fill = new Fill();
+			fill.texture = gaplessTexture;
+			fill.textureRepeat = true;
+
+			fill.addVertex(0, 0);
+			fill.addVertex(300, 0);
+			fill.addVertex(250, 300);			
+			fill.addVertex(250, 500);
+			fill.addVertex(200, 550);
+			fill.addVertex(150, 400);
+			fill.addVertex(0, 100);
+			fill.addVertex(50, 50);
+			fill.buildGeometry();
+			
+			fill.uvMatrix.a = 1 / text.width;
+			fill.uvMatrix.d = 1 / text.height;
+			fill.applyUVMatrix();
+			
+			addChild(fill);
+
+
+
+-------------------------------------------------------------------------------
+
+
 Starling-Extension-Graphics
 ===========================
 
